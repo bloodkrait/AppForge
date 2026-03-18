@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AppForge</title>
+
+  <!-- ⚠️  PASTE YOUR ANTHROPIC API KEY BELOW -->
+  <script>window.ANTHROPIC_API_KEY = "YOUR_API_KEY_HERE";</script>
+
+  <!-- React + Babel (no build step needed) -->
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0d0d0d; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // ── API ───────────────────────────────────────────────────────────────────
+    async function callClaude(system, user, maxTokens = 1200) {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": window.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: maxTokens,
+          system,
+          messages: [{ role: "user", content: user }],
+        }),
+      });
+      const d = await res.json();
+      if (d.error) throw new Error(d.error.message);
+      return d.content.map(b => b.text || "").join("\n");
+    }
+
+    // ── STORAGE (localStorage for standalone) ────────────────────────────────
+    function loadStorage(key) {
+      try { const v = localStorage.getItem("af_" + key); return v ? JSON.parse(v) : null; } catch { return null; }
+    }
+    function saveStorage(key, val) {
+      try { localStorage.setItem("af_" + key, JSON.stringify(val)); } catch {}
+    }
+
+    // ── STYLES ────────────────────────────────────────────────────────────────
+    const S = `
+@import url('https://fonts.googleapis.com/css2?family=Cabinet+Grotesk:wght@400;500;700;800;900&family=Chivo+Mono:wght@300;400;500&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d0d0d;--s1:#141414;--s2:#1c1c1c;--b:#272727;--b2:#323232;
+  --lime:#c8f135;--lime2:#a8d420;--limefaint:rgba(200,241,53,.07);
+  --text:#e8e8e0;--mut:#58584f;--mut2:#888880;
+  --red:#ff5252;--gold:#f5b700;--blue:#4d9fff;--purple:#b27eff;--teal:#2dd4bf;
+  --head:'Cabinet Grotesk',sans-serif;--mono:'Chivo Mono',monospace;
+}
+html,body{background:var(--bg);color:var(--text);font-family:var(--head);}
+.app{min-height:100vh;}
+.nav{display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.5rem;border-bottom:1px solid var(--b);background:var(--s1);position:sticky;top:0;z-index:10;}
+.logo{font-size:1.25rem;font-weight:900;letter-spacing:-.04em;color:#fff;}
+.logo em{color:var(--lime);font-style:normal;}
+.logo sup{font-size:.55rem;color:var(--mut2);font-weight:500;letter-spacing:.05em;margin-left:.15rem;}
+.tabs{display:flex;gap:.2rem;background:var(--bg);border:1px solid var(--b);border-radius:8px;padding:.2rem;}
+.tab{padding:.4rem .95rem;border-radius:6px;border:none;background:transparent;color:var(--mut);font-family:var(--head);font-size:.8rem;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.tab.on{background:var(--s2);color:var(--text);}
+.tab .ct{background:var(--lime);color:#000;border-radius:100px;padding:.05rem .45rem;font-size:.6rem;font-weight:900;margin-left:.3rem;}
+.tab .live{background:var(--red);color:#fff;border-radius:100px;padding:.05rem .45rem;font-size:.6rem;font-weight:900;margin-left:.3rem;animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+.page{max-width:800px;margin:0 auto;padding:2rem 1.5rem;}
+.page.wide{max-width:1000px;}
+.label{font-size:.62rem;font-family:var(--mono);text-transform:uppercase;letter-spacing:.12em;color:var(--mut);margin-bottom:.45rem;}
+.input{width:100%;background:var(--s1);border:1px solid var(--b);border-radius:9px;color:var(--text);font-family:var(--head);font-size:.95rem;padding:.8rem 1rem;outline:none;transition:border-color .15s;margin-bottom:.9rem;}
+.input:focus{border-color:var(--lime);}
+.input::placeholder{color:var(--mut);}
+.pills{display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:.9rem;}
+.pill{padding:.3rem .85rem;border-radius:100px;border:1px solid var(--b);background:transparent;color:var(--mut);font-family:var(--head);font-size:.76rem;font-weight:500;cursor:pointer;transition:all .15s;}
+.pill.on{border-color:var(--lime);background:rgba(200,241,53,.09);color:var(--lime);}
+.p3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin-bottom:1.4rem;}
+.pcard{padding:.65rem .75rem;border-radius:8px;border:1px solid var(--b);background:var(--s1);color:var(--mut);font-family:var(--head);font-size:.76rem;font-weight:700;cursor:pointer;transition:all .15s;text-align:center;}
+.pcard small{display:block;font-size:.62rem;font-weight:400;margin-top:.12rem;opacity:.55;}
+.pcard.on{border-color:var(--lime);background:var(--limefaint);color:var(--lime);}
+.btn-primary{width:100%;padding:.95rem;background:var(--lime);color:#000;border:none;border-radius:9px;font-family:var(--head);font-size:.95rem;font-weight:900;cursor:pointer;transition:all .2s;letter-spacing:-.01em;}
+.btn-primary:hover:not(:disabled){background:var(--lime2);transform:translateY(-1px);box-shadow:0 6px 24px rgba(200,241,53,.2);}
+.btn-primary:disabled{opacity:.3;cursor:not-allowed;transform:none;}
+.ideas{display:flex;flex-direction:column;gap:.9rem;margin-top:1.4rem;}
+.icard{background:var(--s1);border:1px solid var(--b);border-radius:12px;overflow:hidden;animation:rise .35s ease both;}
+.icard:nth-child(2){animation-delay:.07s}.icard:nth-child(3){animation-delay:.14s}
+.icard-top{padding:1.1rem 1.2rem .7rem;}
+.icard-badges{display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.5rem;}
+.badge{font-family:var(--mono);font-size:.58rem;text-transform:uppercase;letter-spacing:.07em;padding:.18rem .48rem;border-radius:4px;}
+.bl{background:rgba(200,241,53,.1);color:var(--lime);border:1px solid rgba(200,241,53,.18);}
+.bg{background:rgba(245,183,0,.09);color:var(--gold);border:1px solid rgba(245,183,0,.18);}
+.bb{background:rgba(77,159,255,.09);color:var(--blue);border:1px solid rgba(77,159,255,.18);}
+.br{background:rgba(255,82,82,.09);color:var(--red);border:1px solid rgba(255,82,82,.18);}
+.bp{background:rgba(178,126,255,.09);color:var(--purple);border:1px solid rgba(178,126,255,.18);}
+.bt{background:rgba(45,212,191,.09);color:var(--teal);border:1px solid rgba(45,212,191,.18);}
+.icard-title{font-size:1.05rem;font-weight:800;letter-spacing:-.025em;color:#fff;margin-bottom:.18rem;}
+.icard-tagline{font-size:.8rem;color:var(--mut2);line-height:1.4;}
+.icard-body{padding:.4rem 1.2rem .9rem;font-size:.82rem;line-height:1.8;color:#a8a89e;white-space:pre-wrap;}
+.icard-actions{display:flex;gap:.45rem;padding:.7rem 1.2rem;border-top:1px solid var(--b);background:rgba(0,0,0,.18);flex-wrap:wrap;}
+.abtn{padding:.38rem .8rem;border-radius:6px;border:1px solid var(--b);background:transparent;color:var(--mut);font-family:var(--head);font-size:.73rem;font-weight:700;cursor:pointer;transition:all .15s;}
+.abtn:hover{border-color:var(--mut2);color:var(--text);}
+.abtn.lime{border-color:rgba(200,241,53,.4);color:var(--lime);}
+.abtn.lime:hover,.abtn.lime.on{background:var(--limefaint);}
+.abtn.build{background:var(--lime);color:#000;border-color:var(--lime);font-weight:900;}
+.abtn.build:hover{background:var(--lime2);}
+.abtn.blue{border-color:rgba(77,159,255,.3);color:var(--blue);}
+.abtn.blue:hover{background:rgba(77,159,255,.08);}
+.abtn.purple{border-color:rgba(178,126,255,.3);color:var(--purple);}
+.expand{padding:.9rem 1.2rem;border-top:1px solid var(--b);background:rgba(0,0,0,.12);font-size:.8rem;line-height:1.85;color:var(--text);white-space:pre-wrap;animation:rise .25s ease;}
+.loading-line{padding:.9rem 1.2rem;border-top:1px solid var(--b);font-family:var(--mono);font-size:.7rem;color:var(--mut);}
+.dot::after{content:'...';animation:dots 1.5s infinite;}
+@keyframes dots{0%{content:'.'}33%{content:'..'}66%{content:'...'}}
+.refine-wrap{padding:.7rem 1.2rem;border-top:1px solid var(--b);background:rgba(0,0,0,.2);}
+.refine-qa{margin-bottom:.7rem;}
+.rq{font-size:.73rem;color:var(--purple);font-weight:700;margin-bottom:.15rem;}
+.ra{font-size:.79rem;color:var(--text);line-height:1.75;white-space:pre-wrap;padding-bottom:.6rem;border-bottom:1px solid var(--b);}
+.refine-row{display:flex;gap:.45rem;}
+.rinput{flex:1;background:var(--s2);border:1px solid var(--b);border-radius:7px;color:var(--text);font-family:var(--head);font-size:.79rem;padding:.5rem .85rem;outline:none;transition:border-color .15s;}
+.rinput:focus{border-color:var(--purple);}
+.rinput::placeholder{color:var(--mut);}
+.rsend{padding:.48rem .9rem;background:var(--purple);color:#fff;border:none;border-radius:7px;font-family:var(--head);font-size:.73rem;font-weight:700;cursor:pointer;transition:opacity .15s;}
+.rsend:hover:not(:disabled){opacity:.85;}
+.rsend:disabled{opacity:.3;cursor:not-allowed;}
+.vault-hdr{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:1.2rem;flex-wrap:wrap;gap:.75rem;}
+.vault-grid{display:grid;grid-template-columns:1fr 1fr;gap:.9rem;}
+.vcard{background:var(--s1);border:1px solid var(--b);border-radius:10px;padding:1.1rem;transition:border-color .15s;}
+.vcard:hover{border-color:var(--b2);}
+.vcard.cmp{border-color:var(--lime);box-shadow:0 0 0 2px rgba(200,241,53,.12);}
+.vcard h4{font-size:.92rem;font-weight:800;letter-spacing:-.02em;color:#fff;margin-bottom:.35rem;}
+.vcard p{font-size:.76rem;color:var(--mut2);line-height:1.6;margin-bottom:.7rem;}
+.vmeta{display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.7rem;align-items:center;}
+.vactions{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;}
+.tag-sel{padding:.28rem .55rem;border-radius:5px;border:1px solid var(--b);background:var(--s2);color:var(--mut2);font-family:var(--mono);font-size:.6rem;cursor:pointer;outline:none;}
+.delbtn{padding:.28rem .65rem;border-radius:5px;border:1px solid rgba(255,82,82,.2);background:transparent;color:var(--red);font-family:var(--head);font-size:.7rem;cursor:pointer;transition:all .15s;}
+.delbtn:hover{background:rgba(255,82,82,.08);}
+.cmp-toggle{padding:.28rem .65rem;border-radius:5px;border:1px solid var(--b);background:transparent;color:var(--mut);font-family:var(--head);font-size:.7rem;cursor:pointer;transition:all .15s;}
+.cmp-toggle.on{border-color:var(--lime);color:var(--lime);background:var(--limefaint);}
+.vfilters{display:flex;gap:.35rem;flex-wrap:wrap;}
+.vfpill{padding:.28rem .7rem;border-radius:100px;border:1px solid var(--b);background:transparent;color:var(--mut);font-family:var(--mono);font-size:.62rem;cursor:pointer;transition:all .15s;}
+.vfpill.on{border-color:var(--gold);color:var(--gold);background:rgba(245,183,0,.07);}
+.cmp-bar{position:sticky;bottom:0;background:var(--s1);border-top:1px solid var(--b);padding:.8rem 1.5rem;display:flex;align-items:center;gap:.9rem;flex-wrap:wrap;}
+.cmp-label{font-family:var(--mono);font-size:.62rem;color:var(--mut);text-transform:uppercase;letter-spacing:.1em;}
+.cmp-names{display:flex;gap:.4rem;flex:1;flex-wrap:wrap;}
+.cmp-tag{background:var(--s2);border:1px solid var(--lime);border-radius:5px;padding:.18rem .55rem;font-size:.73rem;color:var(--lime);font-weight:700;}
+.cmp-go{padding:.45rem 1.1rem;background:var(--lime);color:#000;border:none;border-radius:7px;font-family:var(--head);font-size:.78rem;font-weight:900;cursor:pointer;}
+.cmp-go:disabled{opacity:.3;cursor:not-allowed;}
+.cmp-clr{padding:.45rem .75rem;border-radius:7px;border:1px solid var(--b);background:transparent;color:var(--mut);font-family:var(--head);font-size:.76rem;cursor:pointer;}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:50;display:flex;align-items:center;justify-content:center;padding:1.5rem;animation:rise .18s ease;}
+.modal{background:var(--s1);border:1px solid var(--b);border-radius:14px;max-width:680px;width:100%;max-height:88vh;overflow-y:auto;padding:1.75rem;}
+.modal h2{font-size:1.2rem;font-weight:900;letter-spacing:-.03em;margin-bottom:.2rem;}
+.modal .sub{font-size:.76rem;color:var(--mut2);margin-bottom:1.4rem;}
+.modal-body{font-size:.82rem;line-height:1.85;white-space:pre-wrap;color:var(--text);}
+.modal-close{margin-top:1.4rem;width:100%;padding:.75rem;border-radius:8px;border:1px solid var(--b);background:transparent;color:var(--mut);font-family:var(--head);font-weight:700;cursor:pointer;}
+.modal-close:hover{border-color:var(--mut2);color:var(--text);}
+.empty-state{text-align:center;padding:5rem 2rem;color:var(--mut);font-family:var(--mono);font-size:.78rem;line-height:2.2;}
+.empty-state strong{color:var(--mut2);display:block;font-size:1rem;margin-bottom:.5rem;}
+.proj-hero{background:var(--s1);border:1px solid var(--b);border-radius:14px;padding:1.5rem;margin-bottom:1.2rem;position:relative;overflow:hidden;}
+.proj-hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at top right,rgba(200,241,53,.04),transparent 60%);pointer-events:none;}
+.proj-status-row{display:flex;align-items:center;gap:.75rem;margin-bottom:.9rem;flex-wrap:wrap;}
+.status-badge{font-family:var(--mono);font-size:.6rem;text-transform:uppercase;letter-spacing:.1em;padding:.2rem .6rem;border-radius:4px;}
+.status-planning{background:rgba(77,159,255,.1);color:var(--blue);border:1px solid rgba(77,159,255,.2);}
+.status-building{background:rgba(245,183,0,.1);color:var(--gold);border:1px solid rgba(245,183,0,.2);}
+.status-launched{background:rgba(200,241,53,.1);color:var(--lime);border:1px solid rgba(200,241,53,.2);}
+.proj-title{font-size:1.6rem;font-weight:900;letter-spacing:-.04em;color:#fff;margin-bottom:.3rem;}
+.proj-tagline{font-size:.88rem;color:var(--mut2);line-height:1.5;margin-bottom:1rem;}
+.proj-hero-actions{display:flex;gap:.5rem;margin-top:1.1rem;flex-wrap:wrap;}
+.proj-sections{display:flex;flex-direction:column;gap:1rem;}
+.psec{background:var(--s1);border:1px solid var(--b);border-radius:12px;overflow:hidden;}
+.psec-hdr{display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.2rem;cursor:pointer;transition:background .15s;user-select:none;}
+.psec-hdr:hover{background:rgba(255,255,255,.02);}
+.psec-title{font-size:.82rem;font-weight:800;letter-spacing:-.01em;}
+.psec-icon{font-size:.85rem;margin-right:.55rem;}
+.psec-chevron{font-size:.7rem;color:var(--mut);transition:transform .2s;}
+.psec-chevron.open{transform:rotate(180deg);}
+.psec-body{padding:1rem 1.2rem;border-top:1px solid var(--b);font-size:.82rem;line-height:1.85;white-space:pre-wrap;color:var(--text);animation:rise .2s ease;}
+.psec-loading{padding:1rem 1.2rem;border-top:1px solid var(--b);font-family:var(--mono);font-size:.7rem;color:var(--mut);}
+.psec-gen{padding:.65rem 1.2rem;border-top:1px solid var(--b);display:flex;align-items:center;justify-content:space-between;}
+.psec-gen-text{font-size:.75rem;color:var(--mut);}
+.gen-btn-sm{padding:.38rem .85rem;border-radius:6px;border:none;background:var(--lime);color:#000;font-family:var(--head);font-size:.72rem;font-weight:900;cursor:pointer;transition:all .15s;}
+.gen-btn-sm:hover:not(:disabled){background:var(--lime2);}
+.gen-btn-sm:disabled{opacity:.3;cursor:not-allowed;}
+.focus-card{background:linear-gradient(135deg,rgba(200,241,53,.07),rgba(200,241,53,.02));border:1px solid rgba(200,241,53,.2);border-radius:12px;padding:1.2rem 1.4rem;margin-bottom:1.2rem;}
+.focus-label{font-family:var(--mono);font-size:.6rem;text-transform:uppercase;letter-spacing:.12em;color:var(--lime);margin-bottom:.5rem;}
+.focus-text{font-size:1rem;font-weight:700;color:#fff;line-height:1.5;}
+.checklist{display:flex;flex-direction:column;gap:.5rem;padding:1rem 1.2rem;border-top:1px solid var(--b);}
+.check-item{display:flex;align-items:flex-start;gap:.65rem;cursor:pointer;}
+.check-box{width:1rem;height:1rem;min-width:1rem;border-radius:3px;border:1.5px solid var(--b2);background:transparent;margin-top:.1rem;transition:all .15s;display:flex;align-items:center;justify-content:center;font-size:.6rem;}
+.check-box.done{background:var(--lime);border-color:var(--lime);color:#000;}
+.check-text{font-size:.8rem;color:var(--text);line-height:1.6;}
+.check-text.done{color:var(--mut);text-decoration:line-through;}
+.stepper{display:flex;gap:.5rem;margin-bottom:1.2rem;}
+.step{flex:1;padding:.55rem .5rem;border-radius:7px;border:1px solid var(--b);background:transparent;font-family:var(--head);font-size:.72rem;font-weight:700;color:var(--mut);cursor:pointer;transition:all .15s;text-align:center;}
+.step.on{background:var(--limefaint);border-color:var(--lime);color:var(--lime);}
+.skel{background:linear-gradient(90deg,var(--b) 25%,var(--s2) 50%,var(--b) 75%);background-size:200% 100%;animation:shim 1.5s infinite;border-radius:5px;height:.9rem;margin-bottom:.5rem;}
+.skel.h2{height:1.8rem;}.skel.h5{height:5rem;}.skel.w40{width:40%;}.skel.w65{width:65%;}
+@keyframes shim{0%{background-position:200% 0}100%{background-position:-200% 0}}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.muted{color:var(--mut2);font-size:.78rem;}
+.err-banner{background:rgba(255,82,82,.1);border:1px solid rgba(255,82,82,.3);border-radius:8px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.8rem;color:var(--red);}
+    `;
+
+    // ── CONSTANTS ──────────────────────────────────────────────────────────────
+    const NICHES = ["AI tools","Productivity","Finance","Fitness","Real Estate","Food","Pets","Gaming","Beauty","Home","Travel","Freelancers"];
+    const MONETIZE = ["Subscription","One-Time","Freemium","Marketplace","Ads"];
+    const SKILLS = ["Vibe coding (AI)","Some coding","Basic dev"];
+    const PRIORITY = [
+      {id:"quick",label:"Quickest to Money",sub:"Revenue in days/weeks"},
+      {id:"revenue",label:"Highest Revenue",sub:"Long-term upside"},
+      {id:"easy",label:"Easiest to Ship",sub:"AI tools, no-code"},
+    ];
+    const VAULT_TAGS = ["All","Top Pick","Researching","Building","Shelved"];
+    const TAG_CLS = {"Top Pick":"bl","Researching":"bb","Building":"bg","Shelved":""};
+    const PROJECT_SECTIONS = [
+      {id:"spec",  icon:"📄",title:"Product Spec",       label:"Claude-ready system prompt for your app"},
+      {id:"mvp",   icon:"🔨",title:"MVP Scope",           label:"What to build first (ruthlessly minimal)"},
+      {id:"money", icon:"💳",title:"Monetization Setup",  label:"Stripe, landing page, first sale checklist"},
+      {id:"launch",icon:"🚀",title:"Launch Plan",          label:"How to get your first 10 paying customers"},
+      {id:"stack", icon:"🛠", title:"Recommended Stack",   label:"Exact tools for a solo vibe-coder"},
+    ];
+
+    // ── HELPERS ────────────────────────────────────────────────────────────────
+    function parseIdeas(text) {
+      const blocks = text.split(/\n(?=(?:#{1,3}|\*\*)?(?:Idea |App |\d+[\.\)])\s)/i).filter(b=>b.trim().length>40);
+      if(blocks.length<2) return [{title:"App Concept",tagline:"",body:text,effort:"Low",revenue:"$1K–5K/mo",time:"2–4 weeks",id:Date.now()}];
+      return blocks.slice(0,4).map(block=>{
+        const lines=block.trim().split("\n").filter(Boolean);
+        const titleLine=lines[0].replace(/^[#*\d\.\)]+\s*/,"").replace(/\*\*/g,"").trim();
+        const [title,tagline=""] = titleLine.split("—").map(s=>s.trim());
+        const body=lines.slice(1).join("\n").replace(/\*\*/g,"").trim();
+        const effortM=body.match(/effort[:\s]+(\w+)/i);
+        const revM=body.match(/\$([\d,KkMm\–\-]+\/mo[nth]*)/i);
+        const timeM=body.match(/(\d+[-–]\d+\s*(?:days?|weeks?|months?))/i);
+        return {id:Date.now()+Math.random(),title,tagline,body,
+          effort:effortM?effortM[1]:"Low",
+          revenue:revM?"$"+revM[1]:"Varies",
+          time:timeM?timeM[1]:"2–4 wks"};
+      });
+    }
+
+    function exportBrief(idea, extras={}) {
+      let md=`# ${idea.title}\n> ${idea.tagline}\n\n**Time:** ${idea.time} · **Revenue:** ${idea.revenue} · **Effort:** ${idea.effort}\n\n---\n\n## Overview\n${idea.body}\n`;
+      if(extras.validate) md+=`\n---\n\n## Validation\n${extras.validate}\n`;
+      if(extras.roadmap)  md+=`\n---\n\n## Roadmap\n${extras.roadmap}\n`;
+      if(extras.revenue)  md+=`\n---\n\n## Revenue Projections\n${extras.revenue}\n`;
+      const blob=new Blob([md],{type:"text/markdown"});
+      const a=document.createElement("a");
+      a.href=URL.createObjectURL(blob); a.download=`${idea.title.replace(/\s+/g,"-").toLowerCase()}.md`; a.click();
+    }
+
+    // ── APP ────────────────────────────────────────────────────────────────────
+    function AppForge() {
+      const [tab, setTab]           = useState("generate");
+      const [niche, setNiche]       = useState("");
+      const [selNiches, setSelNiches] = useState([]);
+      const [monetize, setMonetize] = useState([]);
+      const [skill, setSkill]       = useState("Vibe coding (AI)");
+      const [priority, setPriority] = useState("quick");
+      const [loading, setLoading]   = useState(false);
+      const [error, setError]       = useState(null);
+      const [ideas, setIdeas]       = useState([]);
+      const [expanded, setExpanded] = useState({});
+      const [refineIn, setRefineIn] = useState({});
+      const [refineHist, setRefineHist] = useState({});
+      const [refineLoad, setRefineLoad] = useState({});
+      const [refineOpen, setRefineOpen] = useState({});
+      const [vault, setVault]       = useState([]);
+      const [vFilter, setVFilter]   = useState("All");
+      const [cmpIds, setCmpIds]     = useState([]);
+      const [cmpResult, setCmpResult] = useState(null);
+      const [cmpLoading, setCmpLoading] = useState(false);
+      const [activeProject, setActiveProject] = useState(null);
+      const [projStatus, setProjStatus]       = useState("Planning");
+      const [projSections, setProjSections]   = useState({});
+      const [projChecks, setProjChecks]       = useState({});
+      const [projFocus, setProjFocus]         = useState(null);
+
+      useEffect(()=>{
+        const v=loadStorage("vault"); if(v) setVault(v);
+        const p=loadStorage("project"); if(p) setActiveProject(p);
+        const s=loadStorage("projStatus"); if(s) setProjStatus(s);
+        const ps=loadStorage("projSections"); if(ps) setProjSections(ps);
+        const pc=loadStorage("projChecks"); if(pc) setProjChecks(pc);
+        const pf=loadStorage("projFocus"); if(pf) setProjFocus(pf);
+      },[]);
+
+      const toggleArr=(v,a,s)=>s(a.includes(v)?a.filter(x=>x!==v):[...a,v]);
+
+      const generate = async () => {
+        if(!window.ANTHROPIC_API_KEY || window.ANTHROPIC_API_KEY==="YOUR_API_KEY_HERE") {
+          setError("⚠️ Add your Anthropic API key to index.html first. See README.md for instructions.");
+          return;
+        }
+        setLoading(true); setIdeas([]); setExpanded({}); setError(null);
+        try {
+          const pt={
+            quick:"prioritize ideas that can make money within 2-4 weeks — small tools, AI wrappers, niche SaaS, anything a solo person can charge for fast",
+            revenue:"prioritize ideas with the highest long-term revenue ceiling ($5K–$50K/mo), even if they take 2-3 months",
+            easy:"prioritize ideas buildable almost entirely with AI tools, no-code platforms, or simple React — things a beginner can actually finish"
+          }[priority];
+          const text = await callClaude(
+            `You are a startup advisor for solo founders and vibe-coders. ${pt}.\n\nFormat each idea EXACTLY as:\n## [App Name] — [One-line tagline]\n**The Idea:** 2 sentences.\n**Who Pays:** Exactly who pays and why\n**Revenue Model:** Specific pricing\n**Monthly Revenue Potential:** $X–Y/mo at Z customers\n**Time to First Dollar:** X weeks\n**Effort Level:** Low / Medium / High\n**Build with:** Specific AI tools or no-code platforms\n**Quickest Win:** Single first action to take tomorrow`,
+            `Generate 3 app/website ideas:\n- Niche: ${[niche,...selNiches].filter(Boolean).join(", ")||"open"}\n- Monetization: ${monetize.join(", ")||"any"}\n- Build approach: ${skill}\n- Priority: ${priority==="quick"?"FASTEST to money":priority==="revenue"?"HIGHEST revenue ceiling":"EASIEST to build"}\n\nSolo builder using AI tools. Things one person can genuinely ship and charge for.`
+          );
+          setIdeas(parseIdeas(text));
+        } catch(e) { setError("API error: " + e.message); }
+        setLoading(false);
+      };
+
+      const expandIdea = async (idea, type) => {
+        const key=`${idea.id}-${type}`;
+        if(expanded[key]?.content){setExpanded(e=>({...e,[key]:undefined}));return;}
+        setExpanded(e=>({...e,[key]:{loading:true}}));
+        try {
+          let sys,prompt;
+          if(type==="validate"){
+            sys="Market research analyst. Brutally honest. Name real competitors.";
+            prompt=`Validate: "${idea.title} — ${idea.tagline}"\n1. Competitors (names + pricing)\n2. Market gap\n3. Real demand signals\n4. Biggest risk\n5. Score: X/10 + verdict`;
+          } else if(type==="roadmap"){
+            sys="Launch coach for solo builders using AI tools.";
+            prompt=`Launch roadmap for: "${idea.title}"\nBuilder: ${skill}\nWeek 1: Validate\nWeek 2-3: Build MVP\nWeek 4: Launch + first customer\nMonth 2-3: Grow\nEnd with "This week's first 3 moves."`;
+          } else {
+            sys="Financial modeler for bootstrapped solo businesses.";
+            prompt=`Revenue projections for: "${idea.title}"\n🐌 Conservative\n📈 Realistic\n🚀 Optimistic\nEach: 3/6/12 month revenue. What does $5K/mo look like?`;
+          }
+          const content=await callClaude(sys,prompt);
+          setExpanded(e=>({...e,[key]:{content,loading:false}}));
+        } catch(e) { setExpanded(ex=>({...ex,[key]:undefined})); }
+      };
+
+      const sendRefine = async (idea) => {
+        const q=refineIn[idea.id]?.trim(); if(!q) return;
+        setRefineLoad(r=>({...r,[idea.id]:true}));
+        setRefineIn(r=>({...r,[idea.id]:""}));
+        try {
+          const a=await callClaude(
+            "Sharp startup advisor for solo builders. Direct and specific.",
+            `About "${idea.title}": ${idea.body?.slice(0,200)}\n\nQuestion: ${q}`
+          );
+          setRefineHist(h=>({...h,[idea.id]:[...(h[idea.id]||[]),{q,a}]}));
+        } catch(e) {}
+        setRefineLoad(r=>({...r,[idea.id]:false}));
+      };
+
+      const saveToVault = (idea) => {
+        if(vault.find(v=>v.title===idea.title)) return;
+        const u=[...vault,{...idea,savedAt:new Date().toLocaleDateString(),tag:null}];
+        setVault(u); saveStorage("vault",u);
+      };
+      const deleteFromVault = (title) => {
+        const u=vault.filter(v=>v.title!==title); setVault(u); saveStorage("vault",u);
+      };
+      const updateTag = (title,tag) => {
+        const u=vault.map(v=>v.title===title?{...v,tag}:v); setVault(u); saveStorage("vault",u);
+      };
+      const isSaved=(title)=>vault.some(v=>v.title===title);
+
+      const toggleCmp=(id)=>setCmpIds(p=>p.includes(id)?p.filter(x=>x!==id):p.length<2?[...p,id]:[p[1],id]);
+      const runCmp = async () => {
+        const [a,b]=cmpIds.map(id=>vault.find(v=>v.title===id)).filter(Boolean);
+        if(!a||!b) return;
+        setCmpLoading(true);
+        try {
+          const content=await callClaude(
+            "Decisive startup advisor. Pick one. Don't hedge.",
+            `Compare, recommend which to build first:\nA: ${a.title} — ${a.tagline}\n${a.body?.slice(0,250)}\nB: ${b.title} — ${b.tagline}\n${b.body?.slice(0,250)}\nEnd with: "BUILD [A or B] FIRST — because [one sharp reason]"`
+          );
+          setCmpResult({a:a.title,b:b.title,content});
+        } catch(e) {}
+        setCmpLoading(false);
+      };
+
+      const buildThis = async (idea) => {
+        setActiveProject(idea);
+        setProjSections({}); setProjChecks({}); setProjFocus(null);
+        saveStorage("project",idea); saveStorage("projStatus","Planning");
+        saveStorage("projSections",{}); saveStorage("projChecks",{});
+        setTab("project");
+        try {
+          const focus=await callClaude(
+            "Direct startup coach. One crystal-clear action.",
+            `For: "${idea.title} — ${idea.tagline}"\nONE specific thing to do THIS WEEK toward a first paying customer. One sentence. Start with a verb.`
+          );
+          const f=focus.trim().replace(/^["\-–•]+\s*/,"");
+          setProjFocus(f); saveStorage("projFocus",f);
+        } catch(e) {}
+      };
+
+      const genSection = async (sectionId) => {
+        if(!activeProject) return;
+        setProjSections(s=>({...s,[sectionId]:{loading:true,open:true}}));
+        const idea=activeProject;
+        try {
+          let sys,prompt;
+          if(sectionId==="spec"){
+            sys="You write tight, effective system prompts for Claude.";
+            prompt=`Write a Claude system prompt for building: "${idea.title} — ${idea.tagline}"\nBuilder: solo vibe-coder, skill: ${skill}.\nInclude: what it does, tech stack, UI style, V1 features, code approach. Paste-ready.`;
+          } else if(sectionId==="mvp"){
+            sys="Ruthless product scope-cutter for solo founders.";
+            prompt=`Minimum V1 for: "${idea.title}"\n1 person, AI tools, ship in 1-2 weeks.\n- Core features (max 3)\n- What to CUT\n- The one core flow\n- What "done" looks like to charge for it`;
+          } else if(sectionId==="money"){
+            sys="Practical monetization advisor for bootstrapped solo builders.";
+            prompt=`Monetization setup for: "${idea.title}"\nModel: ${monetize.join(", ")||"subscription"}\n1. Stripe setup steps\n2. Landing page must-haves\n3. First 5 paying users before app is done\n4. Launch pricing\n5. The one sentence that makes someone buy`;
+          } else if(sectionId==="launch"){
+            sys="Scrappy growth advisor for indie hackers.";
+            prompt=`First 10 paying customers for: "${idea.title}"\nSpecific platforms, subreddits, communities, outreach scripts. No generic advice.\nWeek 1 actions, Week 2 actions, Month 1 goal.`;
+          } else if(sectionId==="stack"){
+            sys="Practical stack recommender for solo vibe-coders.";
+            prompt=`Exact stack for: "${idea.title}"\nBuilder: ${skill}\nFrontend, backend/db, auth, payments, AI tools for building, hosting, cost/month, time to ship.`;
+          }
+          const content=await callClaude(sys,prompt,1400);
+          const updated={...projSections,[sectionId]:{content,loading:false,open:true}};
+          setProjSections(updated); saveStorage("projSections",updated);
+        } catch(e) { setProjSections(s=>({...s,[sectionId]:undefined})); }
+      };
+
+      const toggleSection=(id)=>setProjSections(s=>({...s,[id]:{...s[id],open:!s[id]?.open}}));
+      const toggleCheck=(key)=>{const u={...projChecks,[key]:!projChecks[key]};setProjChecks(u);saveStorage("projChecks",u);};
+      const updateStatus=(s)=>{setProjStatus(s);saveStorage("projStatus",s);};
+      const clearProject=()=>{
+        setActiveProject(null);setProjSections({});setProjChecks({});setProjFocus(null);
+        saveStorage("project",null);saveStorage("projSections",{});saveStorage("projChecks",{});saveStorage("projFocus",null);
+      };
+
+      const filteredVault=vFilter==="All"?vault:vault.filter(v=>v.tag===vFilter);
+
+      return (
+        <>
+          <style>{S}</style>
+          <div className="app">
+            <div className="nav">
+              <div className="logo">APP<em>FORGE</em><sup>v3</sup></div>
+              <div className="tabs">
+                <button className={`tab ${tab==="generate"?"on":""}`} onClick={()=>setTab("generate")}>⚡ Generate</button>
+                <button className={`tab ${tab==="vault"?"on":""}`} onClick={()=>setTab("vault")}>
+                  🗄 Vault{vault.length>0&&<span className="ct">{vault.length}</span>}
+                </button>
+                <button className={`tab ${tab==="project"?"on":""}`} onClick={()=>setTab("project")}>
+                  🔨 Build{activeProject&&<span className="live">LIVE</span>}
+                </button>
+              </div>
+              <div style={{fontFamily:"var(--mono)",fontSize:".6rem",color:"var(--mut)"}}>PERSONAL</div>
+            </div>
+
+            {/* GENERATE */}
+            {tab==="generate"&&(
+              <div className="page">
+                {error&&<div className="err-banner">{error}</div>}
+                <div className="label">Niche or problem area</div>
+                <input className="input" placeholder="Type anything — or pick below..."
+                  value={niche} onChange={e=>setNiche(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&!loading&&generate()} />
+                <div className="label">Quick-pick niches</div>
+                <div className="pills">{NICHES.map(n=><button key={n} className={`pill ${selNiches.includes(n)?"on":""}`} onClick={()=>toggleArr(n,selNiches,setSelNiches)}>{n}</button>)}</div>
+                <div className="label">Monetization</div>
+                <div className="pills">{MONETIZE.map(m=><button key={m} className={`pill ${monetize.includes(m)?"on":""}`} onClick={()=>toggleArr(m,monetize,setMonetize)}>{m}</button>)}</div>
+                <div className="label">How you build</div>
+                <div className="pills" style={{marginBottom:"1.4rem"}}>{SKILLS.map(s=><button key={s} className={`pill ${skill===s?"on":""}`} onClick={()=>setSkill(s)}>{s}</button>)}</div>
+                <div className="label">Priority</div>
+                <div className="p3">{PRIORITY.map(p=>(
+                  <button key={p.id} className={`pcard ${priority===p.id?"on":""}`} onClick={()=>setPriority(p.id)}>
+                    {p.label}<small>{p.sub}</small>
+                  </button>
+                ))}</div>
+                <button className="btn-primary" onClick={generate} disabled={loading}>
+                  {loading?"Finding your best opportunities...":"⚡ Generate Ideas"}
+                </button>
+                {loading&&(
+                  <div style={{marginTop:"1.4rem"}}>
+                    {[1,2,3].map(i=><div key={i} style={{background:"var(--s1)",border:"1px solid var(--b)",borderRadius:"12px",padding:"1.2rem",marginBottom:".9rem"}}>
+                      <div className="skel h2 w40"/><div className="skel w65"/><div className="skel h5"/>
+                    </div>)}
+                  </div>
+                )}
+                <div className="ideas">
+                  {ideas.map((idea,i)=>{
+                    const vk=`${idea.id}-validate`,rk=`${idea.id}-roadmap`,pk=`${idea.id}-revenue`;
+                    const ro=refineOpen[idea.id];
+                    return (
+                      <div key={idea.id} className="icard">
+                        <div className="icard-top">
+                          <div className="icard-badges">
+                            <span className="badge bl">{idea.time}</span>
+                            <span className="badge bg">{idea.revenue}</span>
+                            <span className="badge bb">{idea.effort} effort</span>
+                            {i===0&&priority==="quick"&&<span className="badge br">🔥 Fastest Win</span>}
+                            {i===0&&priority==="easy"&&<span className="badge bt">✨ Easiest Build</span>}
+                          </div>
+                          <div className="icard-title">{idea.title}</div>
+                          <div className="icard-tagline">{idea.tagline}</div>
+                        </div>
+                        <div className="icard-body">{idea.body}</div>
+                        <div className="icard-actions">
+                          <button className="abtn" onClick={()=>expandIdea(idea,"validate")}>{expanded[vk]?.content?"▲":"🔍"} Validate</button>
+                          <button className="abtn" onClick={()=>expandIdea(idea,"roadmap")}>{expanded[rk]?.content?"▲":"🗺"} Roadmap</button>
+                          <button className="abtn" onClick={()=>expandIdea(idea,"revenue")}>{expanded[pk]?.content?"▲":"📊"} Revenue</button>
+                          <button className="abtn purple" onClick={()=>setRefineOpen(r=>({...r,[idea.id]:!r[idea.id]}))}>
+                            {ro?"▲":"💬"} Ask
+                          </button>
+                          <button className="abtn blue" onClick={()=>exportBrief(idea,{validate:expanded[vk]?.content,roadmap:expanded[rk]?.content,revenue:expanded[pk]?.content})}>↓ Brief</button>
+                          <button className="abtn lime" onClick={()=>saveToVault(idea)} style={{marginLeft:"auto"}}>
+                            {isSaved(idea.title)?"✓ Saved":"🗄 Save"}
+                          </button>
+                          <button className="abtn build" onClick={()=>buildThis(idea)}>🔨 Build This →</button>
+                        </div>
+                        {[vk,rk,pk].map(key=>expanded[key]&&(
+                          <div key={key}>
+                            {expanded[key].loading
+                              ?<div className="loading-line"><span className="dot">Thinking</span></div>
+                              :<div className="expand">{expanded[key].content}</div>}
+                          </div>
+                        ))}
+                        {ro&&(
+                          <div className="refine-wrap">
+                            {(refineHist[idea.id]||[]).map((r,idx)=>(
+                              <div key={idx} className="refine-qa">
+                                <div className="rq">Q: {r.q}</div>
+                                <div className="ra">{r.a}</div>
+                              </div>
+                            ))}
+                            {refineLoad[idea.id]
+                              ?<div className="loading-line"><span className="dot">Thinking</span></div>
+                              :<div className="refine-row">
+                                <input className="rinput" placeholder="Ask anything about this idea..."
+                                  value={refineIn[idea.id]||""}
+                                  onChange={e=>setRefineIn(r=>({...r,[idea.id]:e.target.value}))}
+                                  onKeyDown={e=>e.key==="Enter"&&sendRefine(idea)} />
+                                <button className="rsend" onClick={()=>sendRefine(idea)} disabled={!refineIn[idea.id]?.trim()}>Ask →</button>
+                              </div>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* VAULT */}
+            {tab==="vault"&&(
+              <div className="page wide">
+                <div className="vault-hdr">
+                  <div>
+                    <div className="label" style={{marginBottom:".2rem"}}>Idea Vault</div>
+                    <div style={{fontWeight:800,fontSize:"1.2rem",letterSpacing:"-.025em"}}>{vault.length} saved idea{vault.length!==1?"s":""}</div>
+                  </div>
+                  <div style={{display:"flex",gap:".75rem",alignItems:"center",flexWrap:"wrap"}}>
+                    <div className="vfilters">{VAULT_TAGS.map(t=><button key={t} className={`vfpill ${vFilter===t?"on":""}`} onClick={()=>setVFilter(t)}>{t}</button>)}</div>
+                    <button className="abtn lime" onClick={()=>setTab("generate")}>+ Generate More</button>
+                  </div>
+                </div>
+                {vault.length===0
+                  ?<div className="empty-state"><strong>Vault is empty</strong>Generate ideas and save the ones worth keeping.</div>
+                  :filteredVault.length===0
+                    ?<div className="empty-state">No ideas tagged "{vFilter}" yet.</div>
+                    :<div className="vault-grid">
+                      {filteredVault.map(idea=>(
+                        <div key={idea.title} className={`vcard ${cmpIds.includes(idea.title)?"cmp":""}`}>
+                          <div className="vmeta">
+                            <span className="badge bl">{idea.time}</span>
+                            <span className="badge bg">{idea.revenue}</span>
+                            {idea.tag&&<span className={`badge ${TAG_CLS[idea.tag]||""}`}>{idea.tag}</span>}
+                            <span style={{marginLeft:"auto",fontFamily:"var(--mono)",fontSize:".54rem",color:"var(--mut)"}}>Saved {idea.savedAt}</span>
+                          </div>
+                          <h4>{idea.title}</h4>
+                          <p>{idea.tagline||idea.body?.slice(0,100)+"..."}</p>
+                          <div className="vactions">
+                            <select className="tag-sel" value={idea.tag||""} onChange={e=>updateTag(idea.title,e.target.value||null)}>
+                              <option value="">Tag...</option>
+                              <option>Top Pick</option><option>Researching</option><option>Building</option><option>Shelved</option>
+                            </select>
+                            <button className={`cmp-toggle ${cmpIds.includes(idea.title)?"on":""}`} onClick={()=>toggleCmp(idea.title)}>
+                              {cmpIds.includes(idea.title)?"✓ Comparing":"⚖ Compare"}
+                            </button>
+                            <button className="abtn build" style={{padding:".28rem .65rem",fontSize:".7rem"}} onClick={()=>buildThis(idea)}>🔨 Build</button>
+                            <button className="delbtn" onClick={()=>deleteFromVault(idea.title)}>Delete</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                }
+                {cmpIds.length>0&&(
+                  <div className="cmp-bar">
+                    <div className="cmp-label">Compare</div>
+                    <div className="cmp-names">{cmpIds.map(id=><span key={id} className="cmp-tag">{id}</span>)}</div>
+                    <button className="cmp-go" onClick={runCmp} disabled={cmpIds.length<2||cmpLoading}>{cmpLoading?"Analyzing...":"⚔ Head-to-Head →"}</button>
+                    <button className="cmp-clr" onClick={()=>setCmpIds([])}>Clear</button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* PROJECT */}
+            {tab==="project"&&(
+              <div className="page">
+                {!activeProject
+                  ?<div className="empty-state">
+                    <strong>No active project yet</strong>
+                    Generate ideas and hit <strong style={{color:"var(--lime)"}}>🔨 Build This</strong> on one you want to pursue.
+                    <br/><br/>
+                    <button className="abtn lime" onClick={()=>setTab("generate")} style={{margin:"0 auto"}}>Go generate ideas →</button>
+                  </div>
+                  :<>
+                    <div className="proj-hero">
+                      <div className="proj-status-row">
+                        <span className={`status-badge status-${projStatus.toLowerCase()}`}>{projStatus}</span>
+                        <span className="badge bl">{activeProject.time}</span>
+                        <span className="badge bg">{activeProject.revenue}</span>
+                      </div>
+                      <div className="proj-title">{activeProject.title}</div>
+                      <div className="proj-tagline">{activeProject.tagline}</div>
+                      <div className="stepper">
+                        {["Planning","Building","Launched"].map(s=>(
+                          <button key={s} className={`step ${projStatus===s?"on":""}`} onClick={()=>updateStatus(s)}>{s}</button>
+                        ))}
+                      </div>
+                      <div className="proj-hero-actions">
+                        <button className="abtn blue" onClick={()=>exportBrief(activeProject,{})}>↓ Export Brief</button>
+                        <button className="abtn" style={{color:"var(--red)",borderColor:"rgba(255,82,82,.2)"}} onClick={clearProject}>✕ Clear Project</button>
+                      </div>
+                    </div>
+                    {projFocus&&(
+                      <div className="focus-card">
+                        <div className="focus-label">🎯 This week's one thing</div>
+                        <div className="focus-text">{projFocus}</div>
+                      </div>
+                    )}
+                    <div className="proj-sections">
+                      {PROJECT_SECTIONS.map(sec=>{
+                        const s=projSections[sec.id];
+                        const isOpen=s?.open;
+                        const hasContent=!!s?.content;
+                        return (
+                          <div key={sec.id} className="psec">
+                            <div className="psec-hdr" onClick={()=>hasContent&&toggleSection(sec.id)}>
+                              <div style={{display:"flex",alignItems:"center"}}>
+                                <span className="psec-icon">{sec.icon}</span>
+                                <span className="psec-title">{sec.title}</span>
+                              </div>
+                              {hasContent&&<span className={`psec-chevron ${isOpen?"open":""}`}>▼</span>}
+                            </div>
+                            {s?.loading&&<div className="psec-loading"><span className="dot">Generating {sec.title}</span></div>}
+                            {hasContent&&isOpen&&(
+                              <>
+                                <div className="psec-body">{s.content}</div>
+                                {sec.id==="money"&&(()=>{
+                                  const items=["Set up Stripe account","Create a product + price in Stripe","Get a Stripe payment link","Build a one-page landing page","Write the headline copy","Add payment link to landing page","Share with 5 potential users","Make first sale"];
+                                  return (
+                                    <div className="checklist">
+                                      {items.map((item,i)=>{
+                                        const key=`money-${i}`;
+                                        return (
+                                          <div key={i} className="check-item" onClick={()=>toggleCheck(key)}>
+                                            <div className={`check-box ${projChecks[key]?"done":""}`}>{projChecks[key]?"✓":""}</div>
+                                            <div className={`check-text ${projChecks[key]?"done":""}`}>{item}</div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  );
+                                })()}
+                              </>
+                            )}
+                            {!hasContent&&!s?.loading&&(
+                              <div className="psec-gen">
+                                <span className="psec-gen-text muted">{sec.label}</span>
+                                <button className="gen-btn-sm" onClick={()=>genSection(sec.id)}>Generate →</button>
+                              </div>
+                            )}
+                            {hasContent&&!isOpen&&(
+                              <div className="psec-gen">
+                                <span className="psec-gen-text muted">Generated — click to expand</span>
+                                <button className="gen-btn-sm" onClick={()=>genSection(sec.id)}>Regenerate</button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                }
+              </div>
+            )}
+
+            {/* COMPARE MODAL */}
+            {cmpResult&&(
+              <div className="overlay" onClick={()=>setCmpResult(null)}>
+                <div className="modal" onClick={e=>e.stopPropagation()}>
+                  <div style={{fontFamily:"var(--mono)",fontSize:".6rem",color:"var(--mut)",textTransform:"uppercase",letterSpacing:".1em",marginBottom:".4rem"}}>Head-to-Head</div>
+                  <h2>{cmpResult.a} vs {cmpResult.b}</h2>
+                  <div className="sub">Which to build first</div>
+                  {cmpLoading
+                    ?<div className="loading-line"><span className="dot">Comparing</span></div>
+                    :<div className="modal-body">{cmpResult.content}</div>}
+                  <button className="modal-close" onClick={()=>setCmpResult(null)}>Close</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<AppForge />);
+  </script>
+</body>
+</html>
