@@ -6,9 +6,7 @@
   <title>AppForge</title>
 
   <!-- ⚠️  PASTE YOUR ANTHROPIC API KEY BELOW -->
-  <script>window.ANTHROPIC_API_KEY = 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
-
-;</script>
+  <script>window.ANTHROPIC_API_KEY = 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;</script>
 
   <!-- React + Babel (no build step needed) -->
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
@@ -406,8 +404,45 @@ html,body{background:var(--bg);color:var(--text);font-family:var(--head);}
         try {
           let sys,prompt;
           if(sectionId==="spec"){
-            sys="You write tight, effective system prompts for Claude.";
-            prompt=`Write a Claude system prompt for building: "${idea.title} — ${idea.tagline}"\nBuilder: solo vibe-coder, skill: ${skill}.\nInclude: what it does, tech stack, UI style, V1 features, code approach. Paste-ready.`;
+            sys=`You write precise, build-ready prompts for Claude. No filler. No explanation. Just the prompt itself — formatted so the builder can copy and paste it directly into a new Claude chat to start coding immediately.`;
+            prompt=`Write a build-ready Claude prompt for this app:
+
+App: "${idea.title}"
+Tagline: "${idea.tagline}"
+Builder: solo, ${skill}, builds single-file HTML apps (like a self-contained index.html with React via CDN + Babel, no build step)
+
+The output must be a single block the builder pastes into Claude. Structure it exactly like this:
+
+---
+SYSTEM CONTEXT
+[2 sentences: what this app does and who it's for]
+
+TECH STACK — use exactly this:
+- Single HTML file (React 18 via cdnjs CDN, Babel standalone, no npm, no build step)
+- localStorage for data persistence
+- Anthropic API via fetch for any AI features
+- [any specific APIs or services needed]
+
+UI STYLE
+- Dark theme, #0d0d0d background
+- [2-3 specific style directions that fit this app]
+- Mobile-first, works on phone browser
+
+V1 FEATURES — build these and nothing else:
+1. [feature 1]
+2. [feature 2]
+3. [feature 3]
+(max 3 — be ruthless)
+
+DO NOT BUILD:
+- [thing 1 to cut]
+- [thing 2 to cut]
+
+FIRST MESSAGE TO CLAUDE:
+"Build me [app name]. [One sentence description]. Single HTML file, React via CDN, dark theme. Start with the full working V1. Here's the spec: [paste above]"
+---
+
+Make every line specific to "${idea.title}". No generic placeholder advice.`;
           } else if(sectionId==="mvp"){
             sys="Ruthless product scope-cutter for solo founders.";
             prompt=`Minimum V1 for: "${idea.title}"\n1 person, AI tools, ship in 1-2 weeks.\n- Core features (max 3)\n- What to CUT\n- The one core flow\n- What "done" looks like to charge for it`;
@@ -656,6 +691,17 @@ html,body{background:var(--bg);color:var(--text);font-family:var(--head);}
                             {hasContent&&isOpen&&(
                               <>
                                 <div className="psec-body">{s.content}</div>
+                                {sec.id==="spec"&&(
+                                  <div style={{padding:".6rem 1.2rem",borderTop:"1px solid var(--b)",display:"flex",gap:".5rem",alignItems:"center",background:"rgba(0,0,0,.15)"}}>
+                                    <button className="gen-btn-sm" onClick={()=>{
+                                      navigator.clipboard.writeText(s.content).then(()=>{
+                                        setProjSections(prev=>({...prev,spec:{...prev.spec,copied:true}}));
+                                        setTimeout(()=>setProjSections(prev=>({...prev,spec:{...prev.spec,copied:false}})),2000);
+                                      });
+                                    }}>{projSections.spec?.copied?"✓ Copied!":"📋 Copy Prompt"}</button>
+                                    <span style={{fontSize:".72rem",color:"var(--mut)"}}>Paste into a new Claude chat to start building</span>
+                                  </div>
+                                )}
                                 {sec.id==="money"&&(()=>{
                                   const items=["Set up Stripe account","Create a product + price in Stripe","Get a Stripe payment link","Build a one-page landing page","Write the headline copy","Add payment link to landing page","Share with 5 potential users","Make first sale"];
                                   return (
